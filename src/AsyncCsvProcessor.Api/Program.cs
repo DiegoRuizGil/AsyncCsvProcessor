@@ -11,7 +11,13 @@ builder.Services.AddDbContext<AsyncCsvProcessorDbContext>(options =>
 builder.Services.AddScoped<IAsyncCsvProcessorDbContext>(sp =>
     sp.GetRequiredService<AsyncCsvProcessorDbContext>());
 
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
 var app = builder.Build();
+
+app.UseSwagger();
+app.UseSwaggerUI();
 
 app.MapPost("/jobs", async (CreateJobRequest request, IAsyncCsvProcessorDbContext db, CancellationToken ct) =>
 {
