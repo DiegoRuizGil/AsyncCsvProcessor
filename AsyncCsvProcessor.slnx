@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AsyncCsvProcessor.Api/AsyncCsvProcessor.Api.csproj" />
+    <Project Path="src/AsyncCsvProcessor.Application/AsyncCsvProcessor.Application.csproj" />
+    <Project Path="src/AsyncCsvProcessor.Domain/AsyncCsvProcessor.Domain.csproj" />
+    <Project Path="src/AsyncCsvProcessor.Infrastructure/AsyncCsvProcessor.Infrastructure.csproj" />
+    <Project Path="src/AsyncCsvProcessor.Worker/AsyncCsvProcessor.Worker.csproj" />
+  </Folder>
+</Solution>
