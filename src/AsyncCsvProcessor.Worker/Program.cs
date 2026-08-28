@@ -1,6 +1,5 @@
 using AsyncCsvProcessor.Application;
 using AsyncCsvProcessor.Infrastructure;
-using AsyncCsvProcessor.Worker;
 using AsyncCsvProcessor.Worker.Consumer;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
@@ -15,7 +14,7 @@ builder.Services.AddScoped<IAsyncCsvProcessorDbContext>(sp =>
 
 builder.Services.AddMassTransit(x =>
 {
-    x.AddConsumer<JobSubmittedConsumer>();
+    x.AddConsumer<JobSubmittedConsumer, JobSubmittedConsumerDefinition>();
     
     x.UsingRabbitMq((context, cfg) =>
     {
