@@ -15,6 +15,7 @@ builder.Services.AddScoped<IAsyncCsvProcessorDbContext>(sp =>
 builder.Services.AddMassTransit(x =>
 {
     x.AddConsumer<JobSubmittedConsumer, JobSubmittedConsumerDefinition>();
+    x.AddConsumer<JobSubmittedFaultConsumer>();
     
     x.UsingRabbitMq((context, cfg) =>
     {
