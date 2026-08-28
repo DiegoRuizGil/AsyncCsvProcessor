@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using AsyncCsvProcessor.Application;
 using AsyncCsvProcessor.Domain;
 using AsyncCsvProcessor.Infrastructure;
@@ -24,10 +25,21 @@ builder.Services.AddMassTransit(x =>
     });
 });
 
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+});
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AsyncCsvProcessorDbContext>();
+    db.Database.Migrate();
+}
 
 app.UseSwagger();
 app.UseSwaggerUI();
