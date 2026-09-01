@@ -10,6 +10,8 @@ public class Job
     public int ProcessedRows { get; private set; }
     public DateTime CreatedAt { get; private set; }
     public DateTime? UpdatedAt { get; private set; }
+    public DateTime? ProcessingStartedAt { get; private set; }
+    public int RecoveryAttempts { get; private set; }
     
     private Job() { } // EF Core necesita un constructor vacío
 
@@ -26,6 +28,7 @@ public class Job
     {
         Status = JobStatus.Processing;
         UpdatedAt = DateTime.UtcNow;
+        ProcessingStartedAt = DateTime.UtcNow;
     }
 
     public void MarkAsCompleted(int totalRows, int processedRows)
@@ -39,6 +42,14 @@ public class Job
     public void MarkAsFailed()
     {
         Status = JobStatus.Failed;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void RegisterRecoveryAttempt()
+    {
+        RecoveryAttempts++;
+        Status = JobStatus.Pending;
+        ProcessingStartedAt = null;
         UpdatedAt = DateTime.UtcNow;
     }
 }
