@@ -15,9 +15,10 @@ public class AsyncCsvProcessorDbContext : DbContext, IAsyncCsvProcessorDbContext
     {
         modelBuilder.Entity<Job>(entity =>
         {
-            entity.HasKey(j => j.Id);
-            entity.Property(j => j.FileName).IsRequired().HasMaxLength(260);
-            entity.Property(j => j.Status).HasConversion<string>();
+            entity.HasKey(job => job.Id);
+            entity.Property(job => job.FileName).IsRequired().HasMaxLength(260);
+            entity.Property(job => job.Status).HasConversion<string>();
+            entity.Property(job => job.Priority).HasConversion<string>();
         });
     }
 }

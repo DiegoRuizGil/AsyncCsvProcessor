@@ -47,16 +47,18 @@ app.UseSwaggerUI();
 app.MapPost("/jobs", async (
     CreateJobRequest request,
     IAsyncCsvProcessorDbContext db,
-    IPublishEndpoint publishEndpoint,
+    ISendEndpointProvider sendEndpointProvider,
     CancellationToken ct) =>
 {
-    var job = new Job(request.FileName);
+    var job = new Job(request.FileName, request.Priority ?? JobPriority.Normal);
     db.Jobs.Add(job);
     await db.SaveChangesAsync(ct);
 
-    await publishEndpoint.Publish(new JobSubmitted(job.Id, job.FileName), ct);
+    var queue = $"job-submitted-{job.Priority.ToString().ToLowerInvariant()}";
+    var sendEndpoint = await sendEndpointProvider.GetSendEndpoint(new Uri($"queue:{queue}"));
+    await sendEndpoint.Send(new JobSubmitted(job.Id, job.FileName));
     
-    return Results.Created($"/jobs/{job.Id}", new { job.Id, job.Status });
+    return Results.Created($"/jobs/{job.Id}", new { job.Id, job.Status, job.Priority });
 });
 
 app.MapGet("/jobs/{id:guid}", async (Guid id, IAsyncCsvProcessorDbContext db, CancellationToken ct) =>
@@ -67,4 +69,4 @@ app.MapGet("/jobs/{id:guid}", async (Guid id, IAsyncCsvProcessorDbContext db, Ca
 
 app.Run();
 
-record CreateJobRequest(string FileName);
+record CreateJobRequest(string FileName, JobPriority? Priority = null);

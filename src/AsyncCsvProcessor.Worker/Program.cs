@@ -25,6 +25,22 @@ builder.Services.AddMassTransit(x =>
             h.Password(builder.Configuration["RabbitMq:Password"] ?? "guest");
         });
         
+        cfg.ReceiveEndpoint("job-submitted-high", e =>
+        {
+            e.ConcurrentMessageLimit = 10;
+            e.ConfigureConsumer<JobSubmittedConsumer>(context);
+        });
+        cfg.ReceiveEndpoint("job-submitted-normal", e =>
+        {
+            e.ConcurrentMessageLimit = 5;
+            e.ConfigureConsumer<JobSubmittedConsumer>(context);
+        });
+        cfg.ReceiveEndpoint("job-submitted-low", e =>
+        {
+            e.ConcurrentMessageLimit = 2;
+            e.ConfigureConsumer<JobSubmittedConsumer>(context);
+        });
+        
         cfg.ConfigureEndpoints(context);
     });
 });
