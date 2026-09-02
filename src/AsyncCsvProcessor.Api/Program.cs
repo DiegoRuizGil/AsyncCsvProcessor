@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using AsyncCsvProcessor.Api.Configuration;
 using AsyncCsvProcessor.Application;
 using AsyncCsvProcessor.Domain;
 using AsyncCsvProcessor.Infrastructure;
@@ -12,6 +13,8 @@ builder.Services.AddDbContext<AsyncCsvProcessorDbContext>(options =>
 
 builder.Services.AddScoped<IAsyncCsvProcessorDbContext>(sp =>
     sp.GetRequiredService<AsyncCsvProcessorDbContext>());
+
+builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection("Storage"));
 
 builder.Services.AddMassTransit(x =>
 {
