@@ -64,7 +64,7 @@ app.MapPost("/jobs", async (
     var uploadsPath = Path.GetFullPath(storageOptions.Value.UploadsPath);
     Directory.CreateDirectory(uploadsPath);
     var storedFileName = $"{Guid.NewGuid()}.csv";
-    var filePath = Path.Combine(storageOptions.Value.UploadsPath, storedFileName);
+    var filePath = Path.Combine(uploadsPath, storedFileName);
 
     await using (var stream = File.Create(filePath))
         await request.File.CopyToAsync(stream, ct);

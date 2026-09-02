@@ -22,4 +22,8 @@
     <ProjectReference Include="..\AsyncCsvProcessor.Infrastructure\AsyncCsvProcessor.Infrastructure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="uploads\" />
+  </ItemGroup>
+
 </Project>

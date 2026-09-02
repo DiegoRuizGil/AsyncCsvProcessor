@@ -3,6 +3,7 @@ using AsyncCsvProcessor.Domain;
 using AsyncCsvProcessor.Worker.Configuration;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace AsyncCsvProcessor.Worker.Consumer;
 
@@ -10,13 +11,13 @@ public class StuckJobsCheckConsumer : IConsumer<CheckStuckJobs>
 {
     private readonly IAsyncCsvProcessorDbContext _dbContext;
     private readonly ISendEndpointProvider _sendEndpointProvider;
-    private readonly StuckJobRecoveryOptions _options;
+    private readonly IOptions<StuckJobRecoveryOptions> _options;
     private readonly ILogger<StuckJobsCheckConsumer> _logger;
 
     public StuckJobsCheckConsumer(
         IAsyncCsvProcessorDbContext dbContext,
         ISendEndpointProvider sendEndpointProvider,
-        StuckJobRecoveryOptions options,
+        IOptions<StuckJobRecoveryOptions> options,
         ILogger<StuckJobsCheckConsumer> logger)
     {
         _dbContext = dbContext;
@@ -27,7 +28,7 @@ public class StuckJobsCheckConsumer : IConsumer<CheckStuckJobs>
 
     public async Task Consume(ConsumeContext<CheckStuckJobs> context)
     {
-        var threshold = DateTime.UtcNow - TimeSpan.FromMinutes(_options.ThresholdMinutes);
+        var threshold = DateTime.UtcNow - TimeSpan.FromMinutes(_options.Value.ThresholdMinutes);
 
         var stuckJobs = await _dbContext.Jobs
             .Where(job => job.Status == JobStatus.Processing
@@ -37,7 +38,7 @@ public class StuckJobsCheckConsumer : IConsumer<CheckStuckJobs>
         
         foreach (var job in stuckJobs)
         {
-            if (job.RecoveryAttempts < _options.MaxAttempts)
+            if (job.RecoveryAttempts < _options.Value.MaxAttempts)
             {
                 job.RegisterRecoveryAttempt();
 
@@ -47,7 +48,7 @@ public class StuckJobsCheckConsumer : IConsumer<CheckStuckJobs>
                 
                 _logger.LogWarning(
                     "Job {JobId} stuck in Processing, rescheduled (attempt {Attempt}/{Max})",
-                    job.Id, job.RecoveryAttempts, _options.MaxAttempts);
+                    job.Id, job.RecoveryAttempts, _options.Value.MaxAttempts);
             }
             else
             {
@@ -55,7 +56,7 @@ public class StuckJobsCheckConsumer : IConsumer<CheckStuckJobs>
                 
                 _logger.LogWarning(
                     "Job {JobId} has exhausted its recovery attempts ({Max}), marked as Failed",
-                    job.Id, _options.MaxAttempts);
+                    job.Id, _options.Value.MaxAttempts);
             }
         }
 
