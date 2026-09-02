@@ -4,7 +4,9 @@ using AsyncCsvProcessor.Application;
 using AsyncCsvProcessor.Domain;
 using AsyncCsvProcessor.Infrastructure;
 using MassTransit;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -48,21 +50,35 @@ app.UseSwagger();
 app.UseSwaggerUI();
 
 app.MapPost("/jobs", async (
-    CreateJobRequest request,
+    // IFormFile file,
+    // [FromForm] JobPriority? priority,
+    [FromForm] CreateJobRequest request,
     IAsyncCsvProcessorDbContext db,
     ISendEndpointProvider sendEndpointProvider,
+    IOptions<StorageOptions> storageOptions,
     CancellationToken ct) =>
 {
-    var job = new Job(request.FileName, request.Priority ?? JobPriority.Normal);
+    if (request.File.Length == 0)
+        return Results.BadRequest("The file is empty");
+
+    var uploadsPath = Path.GetFullPath(storageOptions.Value.UploadsPath);
+    Directory.CreateDirectory(uploadsPath);
+    var storedFileName = $"{Guid.NewGuid()}.csv";
+    var filePath = Path.Combine(storageOptions.Value.UploadsPath, storedFileName);
+
+    await using (var stream = File.Create(filePath))
+        await request.File.CopyToAsync(stream, ct);
+    
+    var job = new Job(request.File.FileName, filePath, request.Priority ?? JobPriority.Normal);
     db.Jobs.Add(job);
     await db.SaveChangesAsync(ct);
 
     var queue = $"job-submitted-{job.Priority.ToString().ToLowerInvariant()}";
     var sendEndpoint = await sendEndpointProvider.GetSendEndpoint(new Uri($"queue:{queue}"));
-    await sendEndpoint.Send(new JobSubmitted(job.Id, job.FileName));
+    await sendEndpoint.Send(new JobSubmitted(job.Id, job.FileName, job.FilePath));
     
     return Results.Created($"/jobs/{job.Id}", new { job.Id, job.Status, job.Priority });
-});
+}).DisableAntiforgery();
 
 app.MapGet("/jobs/{id:guid}", async (Guid id, IAsyncCsvProcessorDbContext db, CancellationToken ct) =>
 {
@@ -72,4 +88,4 @@ app.MapGet("/jobs/{id:guid}", async (Guid id, IAsyncCsvProcessorDbContext db, Ca
 
 app.Run();
 
-record CreateJobRequest(string FileName, JobPriority? Priority = null);
+record CreateJobRequest(IFormFile File, JobPriority? Priority = null);

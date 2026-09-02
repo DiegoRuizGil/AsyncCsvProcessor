@@ -43,7 +43,7 @@ public class StuckJobsCheckConsumer : IConsumer<CheckStuckJobs>
 
                 var queue = $"job-submitted-{job.Priority.ToString().ToLowerInvariant()}";
                 var sendEndpoint = await _sendEndpointProvider.GetSendEndpoint(new Uri($"queue:{queue}"));
-                await sendEndpoint.Send(new JobSubmitted(job.Id, job.FileName), context.CancellationToken);
+                await sendEndpoint.Send(new JobSubmitted(job.Id, job.FileName, job.FilePath), context.CancellationToken);
                 
                 _logger.LogWarning(
                     "Job {JobId} stuck in Processing, rescheduled (attempt {Attempt}/{Max})",
