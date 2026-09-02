@@ -10,6 +10,7 @@ public class AsyncCsvProcessorDbContext : DbContext, IAsyncCsvProcessorDbContext
         : base(options) { }
     
     public DbSet<Job> Jobs => Set<Job>();
+    public DbSet<JobRowError> JobRowErrors => Set<JobRowError>();
     public DbSet<Product> Products => Set<Product>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -20,6 +21,16 @@ public class AsyncCsvProcessorDbContext : DbContext, IAsyncCsvProcessorDbContext
             entity.Property(job => job.FileName).IsRequired().HasMaxLength(260);
             entity.Property(job => job.Status).HasConversion<string>();
             entity.Property(job => job.Priority).HasConversion<string>();
+        });
+
+        modelBuilder.Entity<JobRowError>(entity =>
+        {
+            entity.HasKey(error => error.Id);
+            entity.Property(error => error.Message).IsRequired().HasMaxLength(2000);
+            entity.HasOne<Job>()
+                .WithMany()
+                .HasForeignKey(error => error.JobId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Product>(entity =>
