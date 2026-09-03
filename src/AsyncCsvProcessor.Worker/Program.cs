@@ -2,6 +2,7 @@ using AsyncCsvProcessor.Application;
 using AsyncCsvProcessor.Infrastructure;
 using AsyncCsvProcessor.Worker.Configuration;
 using AsyncCsvProcessor.Worker.Consumer;
+using AsyncCsvProcessor.Worker.Csv;
 using AsyncCsvProcessor.Worker.Scheduling;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
@@ -18,6 +19,8 @@ builder.Services.AddScoped<IAsyncCsvProcessorDbContext>(sp =>
 
 builder.Services.Configure<StuckJobRecoveryOptions>(
     builder.Configuration.GetSection("StuckJobRecovery"));
+
+builder.Services.AddScoped<IJobFileProcessor, CsvJobFileProcessor>();
 
 builder.Services.AddQuartz();
 builder.Services.AddQuartzHostedService(options =>
