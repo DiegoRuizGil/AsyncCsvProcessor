@@ -6,4 +6,7 @@
     <Project Path="src/AsyncCsvProcessor.Infrastructure/AsyncCsvProcessor.Infrastructure.csproj" />
     <Project Path="src/AsyncCsvProcessor.Worker/AsyncCsvProcessor.Worker.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AsyncCsvProcessor.IntegrationTests/AsyncCsvProcessor.IntegrationTests.csproj" />
+  </Folder>
 </Solution>
