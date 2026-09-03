@@ -13,6 +13,9 @@ public class Product
     
     private Product() { }
 
+    public Product(ProductData data) :
+        this(data.Sku, data.Name, data.Price, data.Category, data.Stock) { }
+    
     public Product(string sku, string name, decimal price, string category, int stock)
     {
         Id = Guid.NewGuid();
@@ -23,6 +26,8 @@ public class Product
         Stock = stock;
         CreatedAt = DateTime.UtcNow;
     }
+
+    public void UpdateFrom(ProductData data) => UpdateFrom(data.Name, data.Price, data.Category, data.Stock);
 
     public void UpdateFrom(string name, decimal price, string category, int stock)
     {

@@ -1,22 +1,12 @@
 ﻿using System.Globalization;
+using AsyncCsvProcessor.Domain;
 
 namespace AsyncCsvProcessor.Worker.Csv;
 
-public record ProductRowValidationResult(
-    bool IsValid,
-    string? ErrorMessage,
-    string? Sku,
-    string? Name,
-    decimal Price,
-    string? Category,
-    int Stock
-)
+public record ProductRowValidationResult(bool IsValid, string? ErrorMessage, ProductData? Data)
 {
-    public static ProductRowValidationResult Invalid(string error) =>
-        new(false, error, null, null, 0, null, 0);
-    
-    public static ProductRowValidationResult Valid(string sku, string name, decimal price, string category, int stock) =>
-        new(true, null, sku, name, price, category, stock);
+    public static ProductRowValidationResult Invalid(string error) => new(false, error, null);
+    public static ProductRowValidationResult Valid(ProductData data) => new(true, null, data);
 }
 
 public static class ProductCsvRowValidator
@@ -33,7 +23,8 @@ public static class ProductCsvRowValidator
             return ProductRowValidationResult.Invalid($"The Price field is not a valid number or is negative: '{row.Price}'");
         if (!int.TryParse(row.Stock, out var stock) || stock < 0)
             return ProductRowValidationResult.Invalid($"The Stock field is not a valid number os is negative: '{row.Stock}'");
-        
-        return ProductRowValidationResult.Valid(row.Sku, row.Name, price, row.Category, stock);
+
+        var data = new ProductData(row.Sku, row.Name, price, row.Category, stock);
+        return ProductRowValidationResult.Valid(data);
     }
 }

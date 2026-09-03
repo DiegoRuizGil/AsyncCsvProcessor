@@ -100,22 +100,22 @@ public class JobSubmittedConsumer : IConsumer<JobSubmitted>
 
     private async Task UpsertProducts(List<ProductRowValidationResult> validRows, CancellationToken ct)
     {
-        var skus = validRows.Select(result => result.Sku!).Distinct().ToList();
+        var skus = validRows.Select(result => result.Data!.Sku).Distinct().ToList();
         var existingProducts = await _db.Products
             .Where(product => skus.Contains(product.Sku))
             .ToDictionaryAsync(product => product.Sku, ct);
         
         foreach (var result in validRows)
         {
-            if (existingProducts.TryGetValue(result.Sku!, out var product))
+            if (existingProducts.TryGetValue(result.Data!.Sku, out var product))
             {
-                product.UpdateFrom(result.Name!, result.Price, result.Category!, result.Stock);
+                product.UpdateFrom(result.Data);
             }
             else
             {
-                var newProduct = new Product(result.Sku!, result.Name!, result.Price, result.Category!, result.Stock);
+                var newProduct = new Product(result.Data);
                 _db.Products.Add(newProduct);
-                existingProducts[result.Sku!] = newProduct;
+                existingProducts[result.Data.Sku] = newProduct;
             }
         }
     }
