@@ -64,7 +64,7 @@ builder.Services.AddMassTransit(x =>
         });
         cfg.ReceiveEndpoint("check-stuck-jobs", e =>
         {
-            e.ConfigureConsumer<JobSubmittedConsumer>(context);
+            e.ConfigureConsumer<StuckJobsCheckConsumer>(context);
         });
         
         cfg.ConfigureEndpoints(context);
