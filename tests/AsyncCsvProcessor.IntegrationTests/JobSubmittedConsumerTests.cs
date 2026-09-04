@@ -127,4 +127,58 @@ public class JobSubmittedConsumerTests : IAsyncLifetime
         Assert.Equal(3, rowError.RowNumber);
         Assert.Equal("The price 'abc' is not a valid number", rowError.Message);
     }
+    
+    [Fact]
+    public async Task Consume_updates_existing_product_by_sku_instead_of_creating_a_duplicate()
+    {
+        var job = new Job("products.csv", "tmp/products.csv");
+        var existingProduct = new Product("SKU-1", "Mechanical keyboard", 29.99m, "Peripheral", 10);
+
+        await using (var seedDb = _fixture.CreateDbContext())
+        {
+            seedDb.Jobs.Add(job);
+            seedDb.Products.Add(existingProduct);
+            await seedDb.SaveChangesAsync();
+        }
+
+        var originalId = existingProduct.Id;
+        var originalCreatedAt = existingProduct.CreatedAt;
+        
+        var validRows = new List<ProductData>
+        {
+            new("SKU-1", "Mechanical keyboard v2", 34.99m, "Peripheral", 5)
+        };
+        var fakeProcessor = new FakeJobFileProcessor(
+            new JobFileProcessingResult(TotalRows: 1, ValidRows: validRows, Errors: []));
+
+        await using var provider = new ServiceCollection()
+            .AddLogging()
+            .AddDbContext<AsyncCsvProcessorDbContext>(options => options.UseNpgsql(_fixture.ConnectionString))
+            .AddScoped<IAsyncCsvProcessorDbContext>(sp => sp.GetRequiredService<AsyncCsvProcessorDbContext>())
+            .AddSingleton<IJobFileProcessor>(fakeProcessor)
+            .AddMassTransitTestHarness(cfg =>
+            {
+                cfg.AddConsumer<JobSubmittedConsumer>();
+            })
+            .BuildServiceProvider(true);
+
+        var harness = provider.GetRequiredService<ITestHarness>();
+        await harness.Start();
+
+        await harness.Bus.Publish(new JobSubmitted(job.Id, job.FileName, job.FilePath));
+
+        Assert.True(await harness.Consumed.Any<JobSubmitted>());
+
+        await using var assertDb = _fixture.CreateDbContext();
+
+        var products = await assertDb.Products.Where(p => p.Sku == "SKU-1").ToListAsync();
+        var updatedProduct = Assert.Single(products);
+
+        Assert.Equal(originalId, updatedProduct.Id);
+        Assert.Equal(originalCreatedAt, updatedProduct.CreatedAt, TimeSpan.FromMilliseconds(1));
+        Assert.Equal("Mechanical keyboard v2", updatedProduct.Name);
+        Assert.Equal(34.99m, updatedProduct.Price);
+        Assert.Equal(5, updatedProduct.Stock);
+        Assert.NotNull(updatedProduct.UpdateAt);
+    }
 }
