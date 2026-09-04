@@ -36,6 +36,32 @@ public class CsvJobFileProcessorTests
             File.Delete(filePath);
         }
     }
+
+    [Fact]
+    public async Task ProcessAsync_maps_columns_by_name_regardless_of_order_or_extra_columns()
+    {
+        var csvContent =
+            "Category,Notes,Stock,Name,Price,Sku\n" +
+            "Peripheral,internal note,10,Mechanical keyboard,29.99,SKU-1\n";
+
+        var filePath = await WriteTempCsvAsync(csvContent);
+        try
+        {
+            var result = await _processor.ProcessAsync(filePath, CancellationToken.None);
+
+            Assert.Empty(result.Errors);
+            var product = Assert.Single(result.ValidRows);
+            Assert.Equal("SKU-1", product.Sku);
+            Assert.Equal("Mechanical keyboard", product.Name);
+            Assert.Equal(29.99m, product.Price);
+            Assert.Equal("Peripheral", product.Category);
+            Assert.Equal(10, product.Stock);
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
+    }
     
     private static async Task<string> WriteTempCsvAsync(string content, Encoding? encoding = null)
     {
