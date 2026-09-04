@@ -89,3 +89,5 @@ app.MapGet("/jobs/{id:guid}", async (Guid id, IAsyncCsvProcessorDbContext db, Ca
 app.Run();
 
 record CreateJobRequest(IFormFile File, JobPriority? Priority = null);
+
+public partial class Program { }
