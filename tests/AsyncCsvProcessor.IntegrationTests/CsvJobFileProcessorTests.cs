@@ -63,6 +63,32 @@ public class CsvJobFileProcessorTests
         }
     }
     
+    [Fact]
+    public async Task ProcessAsync_maps_columns_case_insensitively()
+    {
+        var csvContent =
+            "sku,NAME,Price,category,STOCK\n" +
+            "SKU-1,Mechanical keyboard,29.99,Peripheral,10\n";
+
+        var filePath = await WriteTempCsvAsync(csvContent);
+        try
+        {
+            var result = await _processor.ProcessAsync(filePath, CancellationToken.None);
+
+            Assert.Empty(result.Errors);
+            var product = Assert.Single(result.ValidRows);
+            Assert.Equal("SKU-1", product.Sku);
+            Assert.Equal("Mechanical keyboard", product.Name);
+            Assert.Equal(29.99m, product.Price);
+            Assert.Equal("Peripheral", product.Category);
+            Assert.Equal(10, product.Stock);
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
+    }
+    
     private static async Task<string> WriteTempCsvAsync(string content, Encoding? encoding = null)
     {
         var filePath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.csv");

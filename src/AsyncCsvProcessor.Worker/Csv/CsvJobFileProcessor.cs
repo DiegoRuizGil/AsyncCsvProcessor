@@ -18,7 +18,8 @@ public class CsvJobFileProcessor : IJobFileProcessor
         {
             HasHeaderRecord = true,
             MissingFieldFound = null,
-            HeaderValidated = null
+            HeaderValidated = null,
+            PrepareHeaderForMatch = args => args.Header.Trim().ToLowerInvariant()
         };
 
         using var reader = new StreamReader(filePath);
