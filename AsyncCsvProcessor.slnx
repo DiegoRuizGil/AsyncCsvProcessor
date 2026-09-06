@@ -8,5 +8,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/AsyncCsvProcessor.IntegrationTests/AsyncCsvProcessor.IntegrationTests.csproj" />
+    <Project Path="tests/AsyncCsvProcessor.UnitTests/AsyncCsvProcessor.UnitTests.csproj" />
   </Folder>
 </Solution>
