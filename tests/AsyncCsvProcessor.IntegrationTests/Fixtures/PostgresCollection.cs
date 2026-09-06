@@ -2,6 +2,5 @@
 
 [CollectionDefinition("Postgres collection")]
 public class PostgresCollection :
-    ICollectionFixture<PostgresContainerFixture>,
-    ICollectionFixture<CustomWebApplicationFactory>
+    ICollectionFixture<PostgresContainerFixture>
 { }
