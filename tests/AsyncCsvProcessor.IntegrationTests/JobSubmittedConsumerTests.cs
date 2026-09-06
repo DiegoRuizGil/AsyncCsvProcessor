@@ -14,6 +14,7 @@ namespace AsyncCsvProcessor.IntegrationTests;
 public class JobSubmittedConsumerTests : IAsyncLifetime
 {
     private readonly PostgresContainerFixture _fixture;
+    private ServiceProvider? _provider;
 
     public JobSubmittedConsumerTests(PostgresContainerFixture fixture)
     {
@@ -21,8 +22,30 @@ public class JobSubmittedConsumerTests : IAsyncLifetime
     }
 
     public Task InitializeAsync() => _fixture.ResetAsync();
-    public Task DisposeAsync() => Task.CompletedTask;
+    public async Task DisposeAsync()
+    {
+        if (_provider is not null)
+            await _provider.DisposeAsync();
+    }
 
+    private async Task<ITestHarness> StartHarnessAsync(IJobFileProcessor fakeProcessor)
+    {
+        _provider = new ServiceCollection()
+            .AddLogging()
+            .AddDbContext<AsyncCsvProcessorDbContext>(options => options.UseNpgsql(_fixture.ConnectionString))
+            .AddScoped<IAsyncCsvProcessorDbContext>(sp => sp.GetRequiredService<AsyncCsvProcessorDbContext>())
+            .AddSingleton<IJobFileProcessor>(fakeProcessor)
+            .AddMassTransitTestHarness(cfg =>
+            {
+                cfg.AddConsumer<JobSubmittedConsumer>();
+            })
+            .BuildServiceProvider(true);
+
+        var harness = _provider.GetRequiredService<ITestHarness>();
+        await harness.Start();
+        return harness;
+    }
+    
     [Fact]
     public async Task Consume_marks_job_completed_and_upserts_products_when_all_rows_are_valid()
     {
@@ -39,21 +62,9 @@ public class JobSubmittedConsumerTests : IAsyncLifetime
             new("SKU-2", "Wireless mouse", 15.50m, "Peripheral", 25)
         };
         var fakeProcessor = new FakeJobFileProcessor(
-            new JobFileProcessingResult(TotalRows: 2, ValidRows: validRows, Errors: []));
+            new JobFileProcessingResult(TotalRows: 2, ValidRows: validRows, Errors: []), true);
 
-        await using var provider = new ServiceCollection()
-            .AddLogging()
-            .AddDbContext<AsyncCsvProcessorDbContext>(options => options.UseNpgsql(_fixture.ConnectionString))
-            .AddScoped<IAsyncCsvProcessorDbContext>(sp => sp.GetRequiredService<AsyncCsvProcessorDbContext>())
-            .AddSingleton<IJobFileProcessor>(fakeProcessor)
-            .AddMassTransitTestHarness(cfg =>
-            {
-                cfg.AddConsumer<JobSubmittedConsumer>();
-            })
-            .BuildServiceProvider(true);
-        
-        var harness = provider.GetRequiredService<ITestHarness>();
-        await harness.Start();
+        var harness = await StartHarnessAsync(fakeProcessor);
 
         await harness.Bus.Publish(new JobSubmitted(job.Id, job.FileName, job.FilePath));
         
@@ -92,21 +103,9 @@ public class JobSubmittedConsumerTests : IAsyncLifetime
             new(RowNumber: 3, Message: "The price 'abc' is not a valid number")
         };
         var fakeProcessor = new FakeJobFileProcessor(
-            new JobFileProcessingResult(TotalRows: 3, ValidRows: validRows, Errors: errors));
+            new JobFileProcessingResult(TotalRows: 3, ValidRows: validRows, Errors: errors), true);
 
-        await using var provider = new ServiceCollection()
-            .AddLogging()
-            .AddDbContext<AsyncCsvProcessorDbContext>(options => options.UseNpgsql(_fixture.ConnectionString))
-            .AddScoped<IAsyncCsvProcessorDbContext>(sp => sp.GetRequiredService<AsyncCsvProcessorDbContext>())
-            .AddSingleton<IJobFileProcessor>(fakeProcessor)
-            .AddMassTransitTestHarness(cfg =>
-            {
-                cfg.AddConsumer<JobSubmittedConsumer>();
-            })
-            .BuildServiceProvider(true);
-
-        var harness = provider.GetRequiredService<ITestHarness>();
-        await harness.Start();
+        var harness = await StartHarnessAsync(fakeProcessor);
 
         await harness.Bus.Publish(new JobSubmitted(job.Id, job.FileName, job.FilePath));
 
@@ -149,21 +148,9 @@ public class JobSubmittedConsumerTests : IAsyncLifetime
             new("SKU-1", "Mechanical keyboard v2", 34.99m, "Peripheral", 5)
         };
         var fakeProcessor = new FakeJobFileProcessor(
-            new JobFileProcessingResult(TotalRows: 1, ValidRows: validRows, Errors: []));
+            new JobFileProcessingResult(TotalRows: 1, ValidRows: validRows, Errors: []), true);
 
-        await using var provider = new ServiceCollection()
-            .AddLogging()
-            .AddDbContext<AsyncCsvProcessorDbContext>(options => options.UseNpgsql(_fixture.ConnectionString))
-            .AddScoped<IAsyncCsvProcessorDbContext>(sp => sp.GetRequiredService<AsyncCsvProcessorDbContext>())
-            .AddSingleton<IJobFileProcessor>(fakeProcessor)
-            .AddMassTransitTestHarness(cfg =>
-            {
-                cfg.AddConsumer<JobSubmittedConsumer>();
-            })
-            .BuildServiceProvider(true);
-
-        var harness = provider.GetRequiredService<ITestHarness>();
-        await harness.Start();
+        var harness = await StartHarnessAsync(fakeProcessor);
 
         await harness.Bus.Publish(new JobSubmitted(job.Id, job.FileName, job.FilePath));
 
@@ -180,5 +167,48 @@ public class JobSubmittedConsumerTests : IAsyncLifetime
         Assert.Equal(34.99m, updatedProduct.Price);
         Assert.Equal(5, updatedProduct.Stock);
         Assert.NotNull(updatedProduct.UpdateAt);
+    }
+    
+    [Fact]
+    public async Task Consume_discards_message_without_error_when_job_does_not_exist()
+    {
+        var nonExistentJobId = Guid.NewGuid();
+        var fakeProcessor = new FakeJobFileProcessor(
+            new JobFileProcessingResult(TotalRows: 0, ValidRows: [], Errors: []), true);
+
+        var harness = await StartHarnessAsync(fakeProcessor);
+
+        await harness.Bus.Publish(new JobSubmitted(nonExistentJobId, "products.csv", "tmp/products.csv"));
+
+        Assert.True(await harness.Consumed.Any<JobSubmitted>());
+        Assert.False(await harness.Published.Any<Fault<JobSubmitted>>());
+
+        await using var assertDb = _fixture.CreateDbContext();
+        var products = await assertDb.Products.ToListAsync();
+        Assert.Empty(products);
+    }
+
+    [Fact]
+    public async Task Consume_marks_job_as_failed_when_no_processor_can_handle_the_file()
+    {
+        var job = new Job("products.csv", "tmp/products.csv");
+        await using (var seedDb = _fixture.CreateDbContext())
+        {
+            seedDb.Jobs.Add(job);
+            await seedDb.SaveChangesAsync();
+        }
+
+        var fakeProcessor = new FakeJobFileProcessor(
+            new JobFileProcessingResult(TotalRows: 0, ValidRows: [], Errors: []), false);
+
+        var harness = await StartHarnessAsync(fakeProcessor);
+
+        await harness.Bus.Publish(new JobSubmitted(job.Id, job.FileName, job.FilePath));
+
+        Assert.True(await harness.Consumed.Any<JobSubmitted>());
+
+        await using var assertDb = _fixture.CreateDbContext();
+        var persistedJob = await assertDb.Jobs.SingleAsync(j => j.Id == job.Id);
+        Assert.Equal(JobStatus.Failed, persistedJob.Status);
     }
 }
