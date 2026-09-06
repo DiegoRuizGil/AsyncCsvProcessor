@@ -1,56 +1,23 @@
 ﻿using AsyncCsvProcessor.Application;
 using AsyncCsvProcessor.Domain;
-using AsyncCsvProcessor.Infrastructure;
 using AsyncCsvProcessor.IntegrationTests.Fixtures;
 using AsyncCsvProcessor.Worker.Consumer;
 using MassTransit;
-using MassTransit.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace AsyncCsvProcessor.IntegrationTests;
 
 [Collection("Postgres collection")]
-public class JobSubmittedConsumerTests : IAsyncLifetime
+public class JobSubmittedConsumerTests : MassTransitConsumerTestBase<JobSubmittedConsumer>
 {
-    private readonly PostgresContainerFixture _fixture;
-    private ServiceProvider? _provider;
+    public JobSubmittedConsumerTests(PostgresContainerFixture fixture) : base(fixture) { }
 
-    public JobSubmittedConsumerTests(PostgresContainerFixture fixture)
-    {
-        _fixture = fixture;
-    }
-
-    public Task InitializeAsync() => _fixture.ResetAsync();
-    public async Task DisposeAsync()
-    {
-        if (_provider is not null)
-            await _provider.DisposeAsync();
-    }
-
-    private async Task<ITestHarness> StartHarnessAsync(IJobFileProcessor fakeProcessor)
-    {
-        _provider = new ServiceCollection()
-            .AddLogging()
-            .AddDbContext<AsyncCsvProcessorDbContext>(options => options.UseNpgsql(_fixture.ConnectionString))
-            .AddScoped<IAsyncCsvProcessorDbContext>(sp => sp.GetRequiredService<AsyncCsvProcessorDbContext>())
-            .AddSingleton<IJobFileProcessor>(fakeProcessor)
-            .AddMassTransitTestHarness(cfg =>
-            {
-                cfg.AddConsumer<JobSubmittedConsumer>();
-            })
-            .BuildServiceProvider(true);
-
-        var harness = _provider.GetRequiredService<ITestHarness>();
-        await harness.Start();
-        return harness;
-    }
-    
     [Fact]
     public async Task Consume_marks_job_completed_and_upserts_products_when_all_rows_are_valid()
     {
         var job = new Job("products.csv", "tmp/products.csv");
-        await using (var seedDb = _fixture.CreateDbContext())
+        await using (var seedDb = Fixture.CreateDbContext())
         {
             seedDb.Jobs.Add(job);
             await seedDb.SaveChangesAsync();
@@ -64,14 +31,14 @@ public class JobSubmittedConsumerTests : IAsyncLifetime
         var fakeProcessor = new FakeJobFileProcessor(
             new JobFileProcessingResult(TotalRows: 2, ValidRows: validRows, Errors: []), true);
 
-        var harness = await StartHarnessAsync(fakeProcessor);
+        var harness = await StartHarnessAsync(services => services.AddSingleton<IJobFileProcessor>(fakeProcessor));
 
         await harness.Bus.Publish(new JobSubmitted(job.Id, job.FileName, job.FilePath));
-        
+
         Assert.True(await harness.Consumed.Any<JobSubmitted>());
-        
-        await using var assertDb = _fixture.CreateDbContext();
-        
+
+        await using var assertDb = Fixture.CreateDbContext();
+
         var persistedJob = await assertDb.Jobs.SingleAsync(j => j.Id == job.Id);
         Assert.Equal(JobStatus.Completed, persistedJob.Status);
         Assert.Equal(2, persistedJob.TotalRows);
@@ -82,12 +49,12 @@ public class JobSubmittedConsumerTests : IAsyncLifetime
         Assert.Contains(products, p => p.Sku == "SKU-1");
         Assert.Contains(products, p => p.Sku == "SKU-2");
     }
-    
+
     [Fact]
     public async Task Consume_marks_job_completed_with_errors_and_persists_row_errors_when_some_rows_fail()
     {
         var job = new Job("products.csv", "tmp/products.csv");
-        await using (var seedDb = _fixture.CreateDbContext())
+        await using (var seedDb = Fixture.CreateDbContext())
         {
             seedDb.Jobs.Add(job);
             await seedDb.SaveChangesAsync();
@@ -105,13 +72,13 @@ public class JobSubmittedConsumerTests : IAsyncLifetime
         var fakeProcessor = new FakeJobFileProcessor(
             new JobFileProcessingResult(TotalRows: 3, ValidRows: validRows, Errors: errors), true);
 
-        var harness = await StartHarnessAsync(fakeProcessor);
+        var harness = await StartHarnessAsync(services => services.AddSingleton<IJobFileProcessor>(fakeProcessor));
 
         await harness.Bus.Publish(new JobSubmitted(job.Id, job.FileName, job.FilePath));
 
         Assert.True(await harness.Consumed.Any<JobSubmitted>());
 
-        await using var assertDb = _fixture.CreateDbContext();
+        await using var assertDb = Fixture.CreateDbContext();
 
         var persistedJob = await assertDb.Jobs.SingleAsync(j => j.Id == job.Id);
         Assert.Equal(JobStatus.CompletedWithErrors, persistedJob.Status);
@@ -126,14 +93,14 @@ public class JobSubmittedConsumerTests : IAsyncLifetime
         Assert.Equal(3, rowError.RowNumber);
         Assert.Equal("The price 'abc' is not a valid number", rowError.Message);
     }
-    
+
     [Fact]
     public async Task Consume_updates_existing_product_by_sku_instead_of_creating_a_duplicate()
     {
         var job = new Job("products.csv", "tmp/products.csv");
         var existingProduct = new Product("SKU-1", "Mechanical keyboard", 29.99m, "Peripheral", 10);
 
-        await using (var seedDb = _fixture.CreateDbContext())
+        await using (var seedDb = Fixture.CreateDbContext())
         {
             seedDb.Jobs.Add(job);
             seedDb.Products.Add(existingProduct);
@@ -142,7 +109,7 @@ public class JobSubmittedConsumerTests : IAsyncLifetime
 
         var originalId = existingProduct.Id;
         var originalCreatedAt = existingProduct.CreatedAt;
-        
+
         var validRows = new List<ProductData>
         {
             new("SKU-1", "Mechanical keyboard v2", 34.99m, "Peripheral", 5)
@@ -150,13 +117,13 @@ public class JobSubmittedConsumerTests : IAsyncLifetime
         var fakeProcessor = new FakeJobFileProcessor(
             new JobFileProcessingResult(TotalRows: 1, ValidRows: validRows, Errors: []), true);
 
-        var harness = await StartHarnessAsync(fakeProcessor);
+        var harness = await StartHarnessAsync(services => services.AddSingleton<IJobFileProcessor>(fakeProcessor));
 
         await harness.Bus.Publish(new JobSubmitted(job.Id, job.FileName, job.FilePath));
 
         Assert.True(await harness.Consumed.Any<JobSubmitted>());
 
-        await using var assertDb = _fixture.CreateDbContext();
+        await using var assertDb = Fixture.CreateDbContext();
 
         var products = await assertDb.Products.Where(p => p.Sku == "SKU-1").ToListAsync();
         var updatedProduct = Assert.Single(products);
@@ -168,7 +135,7 @@ public class JobSubmittedConsumerTests : IAsyncLifetime
         Assert.Equal(5, updatedProduct.Stock);
         Assert.NotNull(updatedProduct.UpdateAt);
     }
-    
+
     [Fact]
     public async Task Consume_discards_message_without_error_when_job_does_not_exist()
     {
@@ -176,14 +143,14 @@ public class JobSubmittedConsumerTests : IAsyncLifetime
         var fakeProcessor = new FakeJobFileProcessor(
             new JobFileProcessingResult(TotalRows: 0, ValidRows: [], Errors: []), true);
 
-        var harness = await StartHarnessAsync(fakeProcessor);
+        var harness = await StartHarnessAsync(services => services.AddSingleton<IJobFileProcessor>(fakeProcessor));
 
         await harness.Bus.Publish(new JobSubmitted(nonExistentJobId, "products.csv", "tmp/products.csv"));
 
         Assert.True(await harness.Consumed.Any<JobSubmitted>());
         Assert.False(await harness.Published.Any<Fault<JobSubmitted>>());
 
-        await using var assertDb = _fixture.CreateDbContext();
+        await using var assertDb = Fixture.CreateDbContext();
         var products = await assertDb.Products.ToListAsync();
         Assert.Empty(products);
     }
@@ -192,7 +159,7 @@ public class JobSubmittedConsumerTests : IAsyncLifetime
     public async Task Consume_marks_job_as_failed_when_no_processor_can_handle_the_file()
     {
         var job = new Job("products.csv", "tmp/products.csv");
-        await using (var seedDb = _fixture.CreateDbContext())
+        await using (var seedDb = Fixture.CreateDbContext())
         {
             seedDb.Jobs.Add(job);
             await seedDb.SaveChangesAsync();
@@ -201,13 +168,13 @@ public class JobSubmittedConsumerTests : IAsyncLifetime
         var fakeProcessor = new FakeJobFileProcessor(
             new JobFileProcessingResult(TotalRows: 0, ValidRows: [], Errors: []), false);
 
-        var harness = await StartHarnessAsync(fakeProcessor);
+        var harness = await StartHarnessAsync(services => services.AddSingleton<IJobFileProcessor>(fakeProcessor));
 
         await harness.Bus.Publish(new JobSubmitted(job.Id, job.FileName, job.FilePath));
 
         Assert.True(await harness.Consumed.Any<JobSubmitted>());
 
-        await using var assertDb = _fixture.CreateDbContext();
+        await using var assertDb = Fixture.CreateDbContext();
         var persistedJob = await assertDb.Jobs.SingleAsync(j => j.Id == job.Id);
         Assert.Equal(JobStatus.Failed, persistedJob.Status);
     }
