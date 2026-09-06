@@ -59,4 +59,51 @@ public class JobsEndpointTests : IClassFixture<CustomWebApplicationFactory>, IAs
         var harness = _factory.Services.GetRequiredService<ITestHarness>();
         Assert.True(await harness.Sent.Any<JobSubmitted>(message => message.Context.Message.JobId == jobId));
     }
+    
+    [Fact]
+    public async Task PostJobs_returns_bad_request_when_file_is_empty()
+    {
+        var client = _factory.CreateClient();
+
+        using var content = new MultipartFormDataContent();
+        var fileContent = new ByteArrayContent([]);
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue("text/csv");
+        content.Add(fileContent, "File", "empty.csv");
+
+        var response = await client.PostAsync("/jobs", content);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetJob_returns_ok_with_job_data_when_job_exists()
+    {
+        var job = new Job("products.csv", "tmp/products.csv", JobPriority.Low);
+        await using (var seedDb = _dbFixture.CreateDbContext())
+        {
+            seedDb.Jobs.Add(job);
+            await seedDb.SaveChangesAsync();
+        }
+
+        var client = _factory.CreateClient();
+        var response = await client.GetAsync($"/jobs/{job.Id}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(job.Id, body.GetProperty("id").GetGuid());
+        Assert.Equal("products.csv", body.GetProperty("fileName").GetString());
+        Assert.Equal("Pending", body.GetProperty("status").GetString());
+        Assert.Equal("Low", body.GetProperty("priority").GetString());
+    }
+
+    [Fact]
+    public async Task GetJob_returns_not_found_when_job_does_not_exist()
+    {
+        var client = _factory.CreateClient();
+
+        var response = await client.GetAsync($"/jobs/{Guid.NewGuid()}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
 }
