@@ -40,6 +40,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    volumes:
+      - csv-uploads:/app/uploads
 
   worker:
     build:
@@ -55,3 +57,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    volumes:
+      - csv-uploads:/app/uploads
+  
+volumes:
+  csv-uploads:
