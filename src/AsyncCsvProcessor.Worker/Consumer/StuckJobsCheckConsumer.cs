@@ -11,17 +11,20 @@ public class StuckJobsCheckConsumer : IConsumer<CheckStuckJobs>
 {
     private readonly IAsyncCsvProcessorDbContext _dbContext;
     private readonly ISendEndpointProvider _sendEndpointProvider;
+    private readonly IUploadedFileCleaner _fileCleaner;
     private readonly IOptions<StuckJobRecoveryOptions> _options;
     private readonly ILogger<StuckJobsCheckConsumer> _logger;
 
     public StuckJobsCheckConsumer(
         IAsyncCsvProcessorDbContext dbContext,
         ISendEndpointProvider sendEndpointProvider,
+        IUploadedFileCleaner fileCleaner,
         IOptions<StuckJobRecoveryOptions> options,
         ILogger<StuckJobsCheckConsumer> logger)
     {
         _dbContext = dbContext;
         _sendEndpointProvider = sendEndpointProvider;
+        _fileCleaner = fileCleaner;
         _options = options;
         _logger = logger;
     }
@@ -53,6 +56,7 @@ public class StuckJobsCheckConsumer : IConsumer<CheckStuckJobs>
             else
             {
                 job.MarkAsFailed();
+                _fileCleaner.TryDeleteUploadedFile(job.FilePath);
                 
                 _logger.LogWarning(
                     "Job {JobId} has exhausted its recovery attempts ({Max}), marked as Failed",

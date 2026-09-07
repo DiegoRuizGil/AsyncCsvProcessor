@@ -9,15 +9,18 @@ public class JobSubmittedConsumer : IConsumer<JobSubmitted>
 {
     private readonly IAsyncCsvProcessorDbContext _db;
     private readonly IEnumerable<IJobFileProcessor> _fileProcessors;
+    private readonly IUploadedFileCleaner _fileCleaner;
     private readonly ILogger<JobSubmittedConsumer> _logger;
 
     public JobSubmittedConsumer(
         IAsyncCsvProcessorDbContext db,
         IEnumerable<IJobFileProcessor> fileProcessors,
+        IUploadedFileCleaner fileCleaner,
         ILogger<JobSubmittedConsumer> logger)
     {
         _db = db;
         _fileProcessors = fileProcessors;
+        _fileCleaner = fileCleaner;
         _logger = logger;
     }
     
@@ -39,12 +42,14 @@ public class JobSubmittedConsumer : IConsumer<JobSubmitted>
         {
             _logger.LogWarning("No processor registered for file {FilePath}", message.FilePath);
             await MarkJobAsFailed(job, context.CancellationToken);
+            _fileCleaner.TryDeleteUploadedFile(message.FilePath);
             return;
         }
         
         var result = await processor.ProcessAsync(message.FilePath, context.CancellationToken);
         
         await CompleteJob(job, result, context.CancellationToken);
+        _fileCleaner.TryDeleteUploadedFile(message.FilePath);
     }
 
     private async Task MarkJobAsProcessing(Job job, CancellationToken ct)

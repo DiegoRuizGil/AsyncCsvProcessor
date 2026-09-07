@@ -6,11 +6,16 @@ namespace AsyncCsvProcessor.Worker.Consumer;
 public class JobSubmittedFaultConsumer : IConsumer<Fault<JobSubmitted>>
 {
     private readonly IAsyncCsvProcessorDbContext _db;
+    private readonly IUploadedFileCleaner _fileCleaner;
     private readonly ILogger<JobSubmittedConsumer> _logger;
 
-    public JobSubmittedFaultConsumer(IAsyncCsvProcessorDbContext db, ILogger<JobSubmittedConsumer> logger)
+    public JobSubmittedFaultConsumer(
+        IAsyncCsvProcessorDbContext db,
+        IUploadedFileCleaner fileCleaner,
+        ILogger<JobSubmittedConsumer> logger)
     {
         _db = db;
+        _fileCleaner = fileCleaner;
         _logger = logger;
     }
     
@@ -27,6 +32,7 @@ public class JobSubmittedFaultConsumer : IConsumer<Fault<JobSubmitted>>
         
         job.MarkAsFailed();
         await _db.SaveChangesAsync(context.CancellationToken);
+        _fileCleaner.TryDeleteUploadedFile(context.Message.Message.FilePath);
 
         var reason = context.Message.Exceptions is { Length: > 0 } exceptions
             ? exceptions[0].Message

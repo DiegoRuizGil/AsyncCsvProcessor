@@ -21,6 +21,7 @@ builder.Services.Configure<StuckJobRecoveryOptions>(
     builder.Configuration.GetSection("StuckJobRecovery"));
 
 builder.Services.AddScoped<IJobFileProcessor, CsvJobFileProcessor>();
+builder.Services.AddScoped<IUploadedFileCleaner, UploadedFileCleaner>();
 
 builder.Services.AddQuartz();
 builder.Services.AddQuartzHostedService(options =>

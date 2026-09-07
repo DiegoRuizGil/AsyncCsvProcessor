@@ -127,4 +127,21 @@ public class StuckJobsCheckConsumerTests : MassTransitConsumerTestBase<StuckJobs
         Assert.Equal(JobStatus.Pending, persistedJob.Status);
         Assert.Equal(0, persistedJob.RecoveryAttempts);
     }
+    
+    [Fact]
+    public async Task Consume_deletes_uploaded_file_when_max_attempts_exhausted()
+    {
+        var job = await SeedJobAsync(
+            JobStatus.Processing,
+            processingStartedAt: DateTime.UtcNow - TimeSpan.FromMinutes(ThresholdMinutes + 5),
+            recoveryAttempts: MaxAttempts);
+
+        var harness = await StartHarnessWithOptionsAsync();
+
+        await harness.Bus.Publish(new CheckStuckJobs());
+
+        Assert.True(await harness.Consumed.Any<CheckStuckJobs>());
+
+        Assert.Contains(job.FilePath, FileCleaner.DeletedFilePaths);
+    }
 }

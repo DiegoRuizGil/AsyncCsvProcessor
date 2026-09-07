@@ -60,4 +60,30 @@ public class JobSubmittedFaultConsumerTests : MassTransitConsumerTestBase<JobSub
         var jobs = await assertDb.Jobs.ToListAsync();
         Assert.Empty(jobs);
     }
+    
+    [Fact]
+    public async Task Consume_deletes_uploaded_file_when_fault_is_received()
+    {
+        var job = new Job("products.csv", "tmp/products.csv");
+        job.MarkAsProcessing();
+
+        await using (var seedDb = Fixture.CreateDbContext())
+        {
+            seedDb.Jobs.Add(job);
+            await seedDb.SaveChangesAsync();
+        }
+
+        var harness = await StartHarnessAsync();
+
+        await harness.Bus.Publish<Fault<JobSubmitted>>(new
+        {
+            FaultId = Guid.NewGuid(),
+            Timestamp = DateTime.UtcNow,
+            Message = new JobSubmitted(job.Id, job.FileName, job.FilePath)
+        });
+
+        Assert.True(await harness.Consumed.Any<Fault<JobSubmitted>>());
+
+        Assert.Contains(job.FilePath, FileCleaner.DeletedFilePaths);
+    }
 }

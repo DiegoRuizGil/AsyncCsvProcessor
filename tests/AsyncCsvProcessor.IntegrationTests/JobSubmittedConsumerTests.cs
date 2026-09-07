@@ -178,4 +178,48 @@ public class JobSubmittedConsumerTests : MassTransitConsumerTestBase<JobSubmitte
         var persistedJob = await assertDb.Jobs.SingleAsync(j => j.Id == job.Id);
         Assert.Equal(JobStatus.Failed, persistedJob.Status);
     }
+    
+    [Fact]
+    public async Task Consume_deletes_uploaded_file_when_job_completes_successfully()
+    {
+        var job = new Job("products.csv", "tmp/products.csv");
+        await using (var seedDb = Fixture.CreateDbContext())
+        {
+            seedDb.Jobs.Add(job);
+            await seedDb.SaveChangesAsync();
+        }
+
+        var fakeProcessor = new FakeJobFileProcessor(
+            new JobFileProcessingResult(TotalRows: 0, ValidRows: [], Errors: []), true);
+
+        var harness = await StartHarnessAsync(services => services.AddSingleton<IJobFileProcessor>(fakeProcessor));
+
+        await harness.Bus.Publish(new JobSubmitted(job.Id, job.FileName, job.FilePath));
+
+        Assert.True(await harness.Consumed.Any<JobSubmitted>());
+
+        Assert.Contains(job.FilePath, FileCleaner.DeletedFilePaths);
+    }
+
+    [Fact]
+    public async Task Consume_deletes_uploaded_file_when_no_processor_can_handle_the_file()
+    {
+        var job = new Job("products.csv", "tmp/products.csv");
+        await using (var seedDb = Fixture.CreateDbContext())
+        {
+            seedDb.Jobs.Add(job);
+            await seedDb.SaveChangesAsync();
+        }
+
+        var fakeProcessor = new FakeJobFileProcessor(
+            new JobFileProcessingResult(TotalRows: 0, ValidRows: [], Errors: []), false);
+
+        var harness = await StartHarnessAsync(services => services.AddSingleton<IJobFileProcessor>(fakeProcessor));
+
+        await harness.Bus.Publish(new JobSubmitted(job.Id, job.FileName, job.FilePath));
+
+        Assert.True(await harness.Consumed.Any<JobSubmitted>());
+
+        Assert.Contains(job.FilePath, FileCleaner.DeletedFilePaths);
+    }
 }

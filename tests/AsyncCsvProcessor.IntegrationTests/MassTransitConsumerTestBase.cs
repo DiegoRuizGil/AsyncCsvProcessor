@@ -13,6 +13,7 @@ public abstract class MassTransitConsumerTestBase<TConsumer> : IAsyncLifetime
     where TConsumer : class, IConsumer
 {
     protected readonly PostgresContainerFixture Fixture;
+    protected readonly FakeUploadedFileCleaner FileCleaner = new();
     private ServiceProvider? _provider;
 
     protected MassTransitConsumerTestBase(PostgresContainerFixture fixture)
@@ -33,7 +34,8 @@ public abstract class MassTransitConsumerTestBase<TConsumer> : IAsyncLifetime
         var services = new ServiceCollection()
             .AddLogging()
             .AddDbContext<AsyncCsvProcessorDbContext>(options => options.UseNpgsql(Fixture.ConnectionString))
-            .AddScoped<IAsyncCsvProcessorDbContext>(sp => sp.GetRequiredService<AsyncCsvProcessorDbContext>());
+            .AddScoped<IAsyncCsvProcessorDbContext>(sp => sp.GetRequiredService<AsyncCsvProcessorDbContext>())
+            .AddSingleton<IUploadedFileCleaner>(FileCleaner);
 
         configureExtraServices?.Invoke(services);
 
